@@ -1,0 +1,75 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      st_name:
+        description: 'Storage Account Name'
+        required: true
+        default: 'stgapdemp001'
+      st_container:
+        description: 'Storage Account Container Name'
+        required: true
+        default: 'states'
+      rg:
+        description: 'Resource Group Name'
+        required: true
+        default: 'rg-gap-iac-demo-001'
+
+jobs:
+
+  terraform-version:
+    runs-on: ubuntu-latest
+    outputs:
+      terraform-version: ${{ steps.terraform-version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Terraform version
+        id: terraform-version
+        run: |
+          version=$(grep -oP 'required_version\s*=\s*"\K[^"]+' terraform.tf)
+          echo "version=${version}" >> $GITHUB_OUTPUT
+  
+  deploy:
+    runs-on: ubuntu-latest
+    needs: terraform-version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ needs.terraform-version.outputs.terraform-version }}
+
+      - name: Terraform Init
+        env:
+          ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
+        run: |
+          terraform init -input=false \
+          -backend-config="storage_account_name=${{inputs.st_name}}" \
+          -backend-config="container_name=${{inputs.st_container}}" \
+          -backend-config="resource_group_name=${{inputs.rg}}" \
+          -backend-config="key=${{ github.repository }}.tfstate"
+
+      - name: Terraform Plan
+        run: |
+              terraform plan
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
+
+      - name: Terraform Apply
+        run: |
+              terraform apply -auto-approve
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
